@@ -1,5 +1,5 @@
 """
-URL mappings for edX Proctoring Server.
+URL mappings for LTI Consumer plugin.
 """
 
 from __future__ import absolute_import
