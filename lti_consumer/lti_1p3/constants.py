@@ -17,7 +17,19 @@ LTI_BASE_MESSAGE = {
 }
 
 LTI_1P3_ROLE_MAP = {
-    'staff': 'http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator',
-    'instructor': 'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Instructor',
-    'student': 'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student'
+    'staff': [
+        'http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator',
+        'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Instructor',
+        'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student',
+    ],
+    'instructor': [
+        'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Instructor',
+        'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student'
+    ],
+    'student': [
+        'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student'
+    ],
+    'guest': [
+        'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student'
+    ],
 }

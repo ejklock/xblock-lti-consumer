@@ -58,25 +58,17 @@ class LtiConsumer1p3(object):
         """
         Encode and sign JSON with RSA key
         """
-        msg = message.copy()
-
-        # Add exp and iat attributes
-        msg.update({
-            "iat": int(round(time.time())),
-            "exp": int(round(time.time()) + 3600)
-        })
-
         # The class instance that sets up the signing operation
         # An RS 256 key is required for LTI 1.3
-        _jws = JWS(msg, alg="RS256", cty="JWT")
+        _jws = JWS(message, alg="RS256", cty="JWT")
 
         # Encode and sign LTI message
         return _jws.sign_compact([self.jwk])
 
     @staticmethod
-    def _get_user_roles(roles):
+    def _get_user_roles(role):
         """
-        Converts platform roles into LTI compliant roles
+        Converts platform role into LTI compliant roles
 
         Used in roles claim: should return array of URI values
         for roles that the user has within the message's context.
@@ -89,20 +81,19 @@ class LtiConsumer1p3(object):
         Reference: http://www.imsglobal.org/spec/lti/v1p3/#roles-claim
         Role vocabularies: http://www.imsglobal.org/spec/lti/v1p3/#role-vocabularies
         """
-        lti_user_roles = []
-        for role in roles:
-            # Raise expection if invalid role list provided
-            if role not in LTI_1P3_ROLE_MAP.keys():
+        lti_user_roles = set()
+
+        if role:
+            # Raise value error if value doesn't exist in map
+            if role not in LTI_1P3_ROLE_MAP:
                 raise ValueError("Invalid role list provided.")
 
-            # Else look up user role and append to dict
-            lti_role = LTI_1P3_ROLE_MAP.get(role)
-            if lti_role:
-                lti_user_roles.append(lti_role)
+            # Add roles to list
+            lti_user_roles.update(LTI_1P3_ROLE_MAP[role])
 
-        return lti_user_roles
+        return list(lti_user_roles)
 
-    def prepare_preflight_request(
+    def prepare_preflight_url(
             self,
             callback_url,
             hint="hint",
@@ -128,7 +119,7 @@ class LtiConsumer1p3(object):
     def set_user_data(
             self,
             user_id,
-            roles,
+            role,
             full_name=None,
             email_address=None
     ):
@@ -145,7 +136,7 @@ class LtiConsumer1p3(object):
 
             # Roles claim
             # Array of URI values for roles that the user has within the message's context
-            "https://purl.imsglobal.org/spec/lti/claim/roles": self._get_user_roles(roles)
+            "https://purl.imsglobal.org/spec/lti/claim/roles": self._get_user_roles(role)
         }
 
         # Additonal user identity claims
@@ -263,6 +254,12 @@ class LtiConsumer1p3(object):
         # Custom variables claim
         if self.lti_claim_custom_parameters:
             lti_message.update(self.lti_claim_custom_parameters)
+
+        # Add `exp` and `iat` JWT attributes
+        lti_message.update({
+            "iat": int(round(time.time())),
+            "exp": int(round(time.time()) + 3600)
+        })
 
         return {
             "state": preflight_response.get("state"),

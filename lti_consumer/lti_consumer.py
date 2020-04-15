@@ -618,23 +618,6 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         return ROLE_MAP.get(self.runtime.get_user_role(), u'Student')
 
     @property
-    def user_roles(self):
-        """
-        Get system user role and convert it to LTI 1.3 user roles.
-        """
-        roles = ['student']
-
-        if self.runtime.get_user_role() == 'instructor':
-            # Instructor have both instructor and administrator
-            # permissions on LTI tool.
-            roles.extend([
-                'instructor',
-                'staff'
-            ])
-
-        return roles
-
-    @property
     def course(self):
         """
         Return course by course id.
@@ -720,20 +703,6 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
             resource_link=self.resource_link_id,
             user_id=self.user_id
         )
-
-    @property
-    def consumer_launch_url(self):
-        """
-        LTI 1.3 Consumer launch handler url
-        """
-        return get_lms_lti_launch_link()  # pylint: disable=no-member
-
-    @property
-    def keyset_url(self):
-        """
-        LTI 1.3 Public Keyset URL
-        """
-        return get_lms_lti_keyset_link(self.location)  # pylint: disable=no-member
 
     @property
     def outcome_service_url(self):
@@ -854,9 +823,9 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         context = {
             "client": self.lti_1p3_client_id,
             "deployment_id": "1",
-            "keyset_url": self.keyset_url,
-            "oidc_callback": self.consumer_launch_url,
-            "launch_url": self.consumer_launch_url,
+            "keyset_url": get_lms_lti_keyset_link(self.location),  # pylint: disable=no-member
+            "oidc_callback": get_lms_lti_launch_link(),
+            "launch_url": self.lti_1p3_launch_url,
         }
         fragment.add_content(loader.render_mako_template('/templates/html/lti_1p3_studio.html', context))
         fragment.add_css(loader.load_unicode('static/css/student.css'))
@@ -899,8 +868,8 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         This prepares a page to make the OIDC preflight request.
         """
         lti_consumer = self._get_lti1p3_consumer()
-        context = lti_consumer.prepare_preflight_request(
-            callback_url=self.consumer_launch_url,
+        context = lti_consumer.prepare_preflight_url(
+            callback_url=get_lms_lti_launch_link(),
             hint=six.text_type(self.location),  # pylint: disable=no-member
             lti_hint=six.text_type(self.location)  # pylint: disable=no-member
         )
@@ -951,7 +920,8 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         # Pass user data
         lti_consumer.set_user_data(
             user_id=self.runtime.user_id,
-            roles=self.user_roles
+            # Pass django user role to library
+            role=self.runtime.get_user_role()
         )
 
         # Set launch context
@@ -987,7 +957,7 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
                 content_type='application/json',
                 content_disposition='attachment; filename=keyset.json'
             )
-        return Response('', content_type='text/html')
+        return Response(status=404)
 
     @XBlock.handler
     def outcome_service_handler(self, request, suffix=''):  # pylint: disable=unused-argument

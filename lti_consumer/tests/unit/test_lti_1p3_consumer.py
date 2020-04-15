@@ -58,7 +58,7 @@ class TestLti1p3Consumer(TestCase):
         """
         self.lti_consumer.set_user_data(
             user_id="1",
-            roles=["student"],
+            role="student",
         )
 
     def _get_lti_message(
@@ -93,37 +93,38 @@ class TestLti1p3Consumer(TestCase):
 
     @ddt.data(
         (
-            ['student'],
+            'student',
             ['http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student']
         ),
         (
-            ['student', 'staff'],
+            'staff',
             [
+                'http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator',
+                'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Instructor',
                 'http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student',
-                'http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator'
             ]
         )
     )
     @ddt.unpack
-    def test_get_user_roles(self, roles, expected_output):
+    def test_get_user_roles(self, role, expected_output):
         """
         Check that user roles are correctly translated to LTI 1.3 compliant rolenames.
         """
-        roles = self.lti_consumer._get_user_roles(roles)  # pylint: disable=protected-access
-        self.assertEqual(roles, expected_output)
+        roles = self.lti_consumer._get_user_roles(role)  # pylint: disable=protected-access
+        self.assertItemsEqual(roles, expected_output)
 
     def test_get_user_roles_invalid(self):
         """
         Check that invalid user roles are throw a ValueError.
         """
         with self.assertRaises(ValueError):
-            self.lti_consumer._get_user_roles(['invalid'])  # pylint: disable=protected-access
+            self.lti_consumer._get_user_roles('invalid')  # pylint: disable=protected-access
 
-    def test_prepare_preflight_request(self):
+    def test_prepare_preflight_url(self):
         """
         Check if preflight request is properly formed and has all required keys.
         """
-        preflight_request_data = self.lti_consumer.prepare_preflight_request(
+        preflight_request_data = self.lti_consumer.prepare_preflight_url(
             callback_url=LAUNCH_URL,
             hint="test-hint",
             lti_hint="test-lti-hint"
@@ -152,7 +153,7 @@ class TestLti1p3Consumer(TestCase):
     @ddt.data(
         # User with no roles
         (
-            {"user_id": "1", "roles": []},
+            {"user_id": "1", "role": ''},
             {
                 "sub": "1",
                 "https://purl.imsglobal.org/spec/lti/claim/roles": []
@@ -160,7 +161,7 @@ class TestLti1p3Consumer(TestCase):
         ),
         # Student user, no optional data
         (
-            {"user_id": "1", "roles": ['student']},
+            {"user_id": "1", "role": 'student'},
             {
                 "sub": "1",
                 "https://purl.imsglobal.org/spec/lti/claim/roles": [
@@ -170,7 +171,7 @@ class TestLti1p3Consumer(TestCase):
         ),
         # User with extra data
         (
-            {"user_id": "1", "roles": [], "full_name": "Jonh", "email_address": "jonh@example.com"},
+            {"user_id": "1", "role": '', "full_name": "Jonh", "email_address": "jonh@example.com"},
             {
                 "sub": "1",
                 "https://purl.imsglobal.org/spec/lti/claim/roles": [],
