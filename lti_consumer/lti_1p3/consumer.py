@@ -177,6 +177,9 @@ class LtiConsumer1p3(object):
             "https://purl.imsglobal.org/spec/lti/claim/launch_presentation": {
                 # Can be one of: iframe, frame, window
                 "document_target": document_target,
+                # TODO: Add support for `return_url` handler to allow the tool
+                # to return error messages back to the lms.
+                # See the spec referenced above for more information.
             },
         }
 

@@ -3,11 +3,16 @@ Unit tests for LTI 1.3 consumer implementation
 """
 from __future__ import absolute_import, unicode_literals
 
+import json
 import ddt
+
 from mock import Mock, patch
 from django.test.testcases import TestCase
 from six.moves.urllib.parse import urlparse, parse_qs
+
 from Crypto.PublicKey import RSA
+from jwkest.jwk import load_jwks
+from jwkest.jws import JWS
 
 from lti_consumer.lti_1p3.consumer import LtiConsumer1p3
 
@@ -42,6 +47,49 @@ class TestLti1p3Consumer(TestCase):
             rsa_key=RSA_KEY,
             rsa_key_id=RSA_KEY_ID
         )
+
+    def _setup_lti_user(self):
+        """
+        Set up a minimal LTI message with only required parameters.
+
+        Currently, the only required parameters are the user data,
+        but using a helper function to keep the usage consistent accross
+        all tests.
+        """
+        self.lti_consumer.set_user_data(
+            user_id="1",
+            roles=["student"],
+        )
+
+    def _get_lti_message(
+            self,
+            preflight_response=None,
+            resource_link="link"
+    ):
+        """
+        Retrieves a base LTI message with fixed test parameters.
+
+        This function has valid default values, so it can be used to test custom
+        parameters, but allows overriding them.
+        """
+        if preflight_response is None:
+            preflight_response = {"nonce": "", "state": ""}
+
+        return self.lti_consumer.generate_launch_request(
+            preflight_response,
+            resource_link
+        )
+
+    def _decode_token(self, token):
+        """
+        Checks for a valid signarute and decodes JWT signed LTI message
+
+        This also tests the public keyset function.
+        """
+        public_keyset = self.lti_consumer.get_public_keyset()
+        key_set = load_jwks(json.dumps(public_keyset))
+
+        return JWS().verify_compact(token, keys=key_set)
 
     @ddt.data(
         (
@@ -143,6 +191,49 @@ class TestLti1p3Consumer(TestCase):
             expected_output
         )
 
+    @ddt.data(
+        "iframe",
+        "frame",
+        "window"
+    )
+    def test_set_valid_presentation_claim(self, target):
+        """
+        Check if setting presentation claim data works
+        """
+        self._setup_lti_user()
+        self.lti_consumer.set_launch_presentation_claim(document_target=target)
+        self.assertEqual(
+            self.lti_consumer.lti_claim_launch_presentation,
+            {
+                "https://purl.imsglobal.org/spec/lti/claim/launch_presentation": {
+                    "document_target": target
+                }
+            }
+        )
+
+        # Prepare LTI message
+        launch_request = self._get_lti_message()
+
+        # Decode and verify message
+        decoded = self._decode_token(launch_request['id_token'])
+        self.assertIn(
+            "https://purl.imsglobal.org/spec/lti/claim/launch_presentation",
+            decoded.keys()
+        )
+        self.assertEqual(
+            decoded["https://purl.imsglobal.org/spec/lti/claim/launch_presentation"],
+            {
+                "document_target": target
+            }
+        )
+
+    def test_set_invalid_presentation_claim(self):
+        """
+        Check if setting invalid presentation claim data raises
+        """
+        with self.assertRaises(ValueError):
+            self.lti_consumer.set_launch_presentation_claim(document_target="invalid")
+
     def test_check_no_user_data_error(self):
         """
         Check if the launch request fails if no user data is set.
@@ -154,15 +245,12 @@ class TestLti1p3Consumer(TestCase):
             )
 
     @patch('time.time', return_value=1000)
-    def check_launch_request(self, mock_time):
+    def test_launch_request(self, mock_time):
         """
         Check if the launch request works if user data is set.
         """
-        self.lti_consumer.set_user_data(
-            user_id="1",
-            roles=[]
-        )
-        launch_request = self.lti_consumer.generate_launch_request(
+        self._setup_lti_user()
+        launch_request = self._get_lti_message(
             preflight_response={
                 "nonce": "test",
                 "state": "state"
@@ -174,6 +262,36 @@ class TestLti1p3Consumer(TestCase):
 
         # Check launch request contents
         self.assertItemsEqual(launch_request.keys(), ['state', 'id_token'])
-        self.assertEqual(launch_request['nonce'], 'test')
-
+        self.assertEqual(launch_request['state'], 'state')
         # TODO: Decode and check token
+
+    def test_custom_parameters(self):
+        """
+        Check if custom parameters are properly set.
+        """
+        custom_parameters = {
+            "custom": "parameter",
+        }
+
+        self._setup_lti_user()
+        self.lti_consumer.set_custom_parameters(custom_parameters)
+
+        launch_request = self._get_lti_message()
+
+        # Decode and verify message
+        decoded = self._decode_token(launch_request['id_token'])
+        self.assertIn(
+            'https://purl.imsglobal.org/spec/lti/claim/custom',
+            decoded.keys()
+        )
+        self.assertEqual(
+            decoded["https://purl.imsglobal.org/spec/lti/claim/custom"],
+            custom_parameters
+        )
+
+    def test_invalid_custom_parameters(self):
+        """
+        Check if invalid custom parameters raise exceptions.
+        """
+        with self.assertRaises(ValueError):
+            self.lti_consumer.set_custom_parameters("invalid")
