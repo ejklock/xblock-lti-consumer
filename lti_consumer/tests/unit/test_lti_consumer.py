@@ -812,14 +812,17 @@ class TestGetContext(TestLtiConsumerXBlock):
     Unit tests for LtiConsumerXBlock._get_context_for_template()
     """
 
-    def test_context_keys(self):
+    @ddt.data('lti_1p1', 'lti_1p3')
+    def test_context_keys(self, lti_version):
         """
         Test `_get_context_for_template` returns dict with correct keys
         """
+        self.xblock.lti_version = lti_version
         context_keys = (
-            'launch_url', 'element_id', 'element_class', 'launch_target', 'display_name', 'form_url', 'hide_launch',
-            'has_score', 'weight', 'module_score', 'comment', 'description', 'ask_to_send_username',
-            'ask_to_send_email', 'button_text', 'modal_vertical_offset', 'modal_horizontal_offset', 'modal_width',
+            'launch_url', 'lti_1p3_launch_url', 'element_id', 'element_class', 'launch_target',
+            'display_name', 'form_url', 'hide_launch', 'has_score', 'weight', 'module_score',
+            'comment', 'description', 'ask_to_send_username', 'ask_to_send_email', 'button_text',
+            'modal_vertical_offset', 'modal_horizontal_offset', 'modal_width',
             'accept_grades_past_due'
         )
         context = self.xblock._get_context_for_template()  # pylint: disable=protected-access
@@ -936,7 +939,7 @@ class TestLtiConsumer1p3XBlock(TestCase):
         """
         Test LTI 1.3 launch request
         """
-        response = self.xblock.lti_launch_handler(make_request('', 'GET'))
+        response = self.xblock.lti_1p3_launch_handler(make_request('', 'GET'))
         self.assertEqual(response.status_code, 200)
 
         # Check if tool OIDC url is on page
@@ -956,7 +959,7 @@ class TestLtiConsumer1p3XBlock(TestCase):
         request = make_request('', 'GET')
         request.query_string = "state=state_test_123&nonce=nonce&login_hint=oidchint&lti_message_hint=ltihint"
 
-        response = self.xblock.lti_launch_callback(request)
+        response = self.xblock.lti_1p3_launch_callback(request)
 
         # Check response and assert that state was inserted
         self.assertEqual(response.status_code, 200)
@@ -969,7 +972,7 @@ class TestLtiConsumer1p3XBlock(TestCase):
         """
         self.xblock.lti_version = 'lti_1p1'
         self.xblock.save()
-        response = self.xblock.lti_launch_callback(make_request('', 'GET'))
+        response = self.xblock.lti_1p3_launch_callback(make_request('', 'GET'))
         self.assertEqual(response.status_code, 404)
 
     # pylint: disable=unused-argument

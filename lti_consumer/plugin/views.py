@@ -49,7 +49,7 @@ def launch_gate_endpoint(request, suffix):
             request=request,
             course_id=str(usage_key.course_key),
             usage_id=str(usage_key),
-            handler='lti_launch_callback',
+            handler='lti_1p3_launch_callback',
             suffix=suffix
         )
     except:  # pylint: disable=bare-except

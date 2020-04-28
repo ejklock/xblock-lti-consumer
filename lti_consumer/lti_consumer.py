@@ -500,6 +500,9 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         'ask_to_send_username', 'ask_to_send_email', 'enable_processors',
     )
 
+    # Author view
+    has_author_view = True
+
     @staticmethod
     def workbench_scenarios():
         """
@@ -776,6 +779,52 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
             close_date = due_date
         return close_date is not None and timezone.now() > close_date
 
+    def _get_lti1p3_consumer(self):
+        """
+        Returns a preconfigured LTI 1.3 consumer.
+
+        If the block is configured to use LTI 1.3, set up a
+        base LTI 1.3 consumer class with all block related
+        configuration services.
+
+        This class does NOT store state between calls.
+        """
+        return LtiConsumer1p3(
+            iss=get_lms_base(),
+            lti_oidc_url=self.lti_1p3_oidc_url,
+            lti_launch_url=self.lti_1p3_launch_url,
+            client_id=self.lti_1p3_client_id,
+            deployment_id="1",
+            rsa_key=self.lti_1p3_block_key,
+            rsa_key_id=self.lti_1p3_client_id
+        )
+
+    def author_view(self, context):
+        """
+        XBlock author view of this component.
+
+        If using LTI 1.1 it shows a launch preview of the XBlock.
+        If using LTI 1.3 it displays a fragment with parameters that
+        need to be set on the LTI Tool to make the integration work.
+        """
+        if self.lti_version == "lti_1p1":
+            return self.student_view(context)
+
+        fragment = Fragment()
+        loader = ResourceLoader(__name__)
+        context = {
+            "client": self.lti_1p3_client_id,
+            "deployment_id": "1",
+            "keyset_url": get_lms_lti_keyset_link(self.location),  # pylint: disable=no-member
+            "oidc_callback": get_lms_lti_launch_link(),
+            "launch_url": self.lti_1p3_launch_url,
+        }
+        fragment.add_content(loader.render_mako_template('/templates/html/lti_1p3_studio.html', context))
+        fragment.add_css(loader.load_unicode('static/css/student.css'))
+        fragment.add_javascript(loader.load_unicode('static/js/xblock_lti_consumer.js'))
+        fragment.initialize_js('LtiConsumerXBlock')
+        return fragment
+
     def student_view(self, context):
         """
         XBlock student view of this component.
@@ -799,59 +848,21 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         fragment.initialize_js('LtiConsumerXBlock')
         return fragment
 
-    has_author_view = True
-
-    def author_view(self, context):
+    @XBlock.handler
+    def lti_launch_handler(self, request, suffix=''):  # pylint: disable=unused-argument
         """
-        XBlock studio view of this component.
+        XBlock handler for launching LTI 1.1 tools.
 
-        Makes a request to `lti_launch_handler` either
-        in an iframe or in a new window depending on the
-        configuration of the instance of this XBlock
+        Displays a form which is submitted via Javascript
+        to send the LTI launch POST request to the LTI
+        provider.
 
         Arguments:
-            context (dict): XBlock context
+            request (xblock.django.request.DjangoWebobRequest): Request object for current HTTP request
+            suffix (unicode): Request path after "lti_launch_handler/"
 
         Returns:
-            xblock.fragment.Fragment: XBlock HTML fragment
-        """
-        if self.lti_version != "lti_1p3":
-            return self.student_view(context)
-
-        fragment = Fragment()
-        loader = ResourceLoader(__name__)
-        context = {
-            "client": self.lti_1p3_client_id,
-            "deployment_id": "1",
-            "keyset_url": get_lms_lti_keyset_link(self.location),  # pylint: disable=no-member
-            "oidc_callback": get_lms_lti_launch_link(),
-            "launch_url": self.lti_1p3_launch_url,
-        }
-        fragment.add_content(loader.render_mako_template('/templates/html/lti_1p3_studio.html', context))
-        fragment.add_css(loader.load_unicode('static/css/student.css'))
-        fragment.add_javascript(loader.load_unicode('static/js/xblock_lti_consumer.js'))
-        fragment.initialize_js('LtiConsumerXBlock')
-        return fragment
-
-    def _get_lti1p3_consumer(self):
-        """
-        Returns LTI 1.3 Consumer class
-
-        Instanced from parameters from XBlock
-        """
-        return LtiConsumer1p3(
-            iss=get_lms_base(),
-            lti_oidc_url=self.lti_1p3_oidc_url,
-            lti_launch_url=self.lti_1p3_launch_url,
-            client_id=self.lti_1p3_client_id,
-            deployment_id="1",
-            rsa_key=self.lti_1p3_block_key,
-            rsa_key_id=self.lti_1p3_client_id
-        )
-
-    def _launch_lti_1p1(self):
-        """
-        Handler that prepares the LTI 1.1 Launch
+            webob.response: HTML LTI launch form
         """
         lti_consumer = LtiConsumer(self)
         lti_parameters = lti_consumer.get_signed_lti_parameters()
@@ -861,11 +872,19 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         template = loader.render_mako_template('/templates/html/lti_launch.html', context)
         return Response(template, content_type='text/html')
 
-    def _launch_lti_1p3(self, request):
+    @XBlock.handler
+    def lti_1p3_launch_handler(self, request, suffix=''):  # pylint: disable=unused-argument
         """
-        Handler that prepares the LTI 1.3.
+        XBlock handler for launching the LTI 1.3 tools.
 
-        This prepares a page to make the OIDC preflight request.
+        Displays a form with the OIDC preflight request and
+        submits it to the tool.
+
+        Arguments:
+            request (xblock.django.request.DjangoWebobRequest): Request object for current HTTP request
+
+        Returns:
+            webob.response: HTML LTI launch form
         """
         lti_consumer = self._get_lti1p3_consumer()
         context = lti_consumer.prepare_preflight_url(
@@ -879,28 +898,7 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         return Response(template, content_type='text/html')
 
     @XBlock.handler
-    def lti_launch_handler(self, request, suffix=''):  # pylint: disable=unused-argument
-        """
-        XBlock handler for launching the LTI provider.
-
-        Displays a form which is submitted via Javascript
-        to send the LTI launch POST request to the LTI
-        provider.
-
-        Arguments:
-            request (xblock.django.request.DjangoWebobRequest): Request object for current HTTP request
-            suffix (unicode): Request path after "lti_launch_handler/"
-
-        Returns:
-            webob.response: HTML LTI launch form
-        """
-        if self.lti_version == "lti_1p3":
-            return self._launch_lti_1p3(request)
-
-        return self._launch_lti_1p1()
-
-    @XBlock.handler
-    def lti_launch_callback(self, request, suffix=''):  # pylint: disable=unused-argument
+    def lti_1p3_launch_callback(self, request, suffix=''):  # pylint: disable=unused-argument
         """
         XBlock handler for launching the LTI 1.3 tool.
 
@@ -1124,14 +1122,19 @@ class LtiConsumerXBlock(StudioEditableXBlockMixin, XBlock):
         allowed_attributes = dict(bleach.sanitizer.ALLOWED_ATTRIBUTES, **{'img': ['src', 'alt']})
         sanitized_comment = bleach.clean(self.score_comment, tags=allowed_tags, attributes=allowed_attributes)
 
+        # Set launch handler depending on LTI version
+        lti_block_launch_handler = self.runtime.handler_url(self, 'lti_launch_handler').rstrip('/?')
+        if self.lti_version == 'lti_1p3':
+            lti_block_launch_handler = self.runtime.handler_url(self, 'lti_1p3_launch_handler').rstrip('/?')
+
         return {
-            'lti_version': self.lti_version,
             'launch_url': self.launch_url.strip(),
+            'lti_1p3_launch_url': self.lti_1p3_launch_url.strip(),
             'element_id': self.location.html_id(),  # pylint: disable=no-member
             'element_class': self.category,  # pylint: disable=no-member
             'launch_target': self.launch_target,
             'display_name': self.display_name,
-            'form_url': self.runtime.handler_url(self, 'lti_launch_handler').rstrip('/?'),
+            'form_url': lti_block_launch_handler,
             'hide_launch': self.hide_launch,
             'has_score': self.has_score,
             'weight': self.weight,
